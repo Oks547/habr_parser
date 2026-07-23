@@ -5,82 +5,91 @@ from datetime import datetime
 # Определяем список ключевых слов
 KEYWORDS = ['дизайн', 'фото', 'web', 'python']
 
+# URL страницы со свежими статьями
 URL = 'https://habr.com/ru/articles/'
 
-def debug_parse_habr(url, keywords):
+def parse_habr_articles(url, keywords):
+    """
+    Парсит свежие статьи с Хабра и выводит те, которые содержат ключевые слова
+    """
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
     }
-   
+
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
        
+        # Находим ВСЕ статьи на странице (без ограничений!)
         articles = soup.find_all('article', class_='tm-articles-list__item')
-       
-        print(f"Всего статей на странице: {len(articles)}\n")
-        print("="*80)
        
         found_articles = []
        
-        for idx, article in enumerate(articles[:10], 1):  # Проверим первые 10
-            # Заголовок
+        # Перебираем все статьи 
+        for article in articles:
+            # Извлекаем заголовок
             title_elem = article.find('h2', class_='tm-title tm-title_h2')
             if not title_elem:
                 continue
+               
             title = title_elem.get_text(strip=True)
            
-            # Ссылка
+            # Извлекаем ссылку
             link_elem = title_elem.find('a')
-            link = 'https://habr.com' + link_elem.get('href') if link_elem else 'Нет ссылки'
+            if not link_elem:
+                continue
+            link = 'https://habr.com' + link_elem.get('href')
            
-            # Дата
+            # Извлекаем дату
             time_elem = article.find('time')
-            date_str = time_elem.get_text(strip=True) if time_elem else 'Дата не указана'
+            date_str = 'Дата не указана'
+            if time_elem:
+                date = time_elem.get('datetime', '')
+                try:
+                    date_obj = datetime.fromisoformat(date.replace('Z', '+00:00'))
+                    date_str = date_obj.strftime('%Y-%m-%d %H:%M')
+                except:
+                    date_str = time_elem.get_text(strip=True)
            
-            # Превью
+            # Извлекаем превью-текст
             preview_text = ''
-            content_elem = article.find('div', class_='tm-article-body')
+            content_elem = article.find('div', class_='tm-article-body tm-article-snippet__lead')
             if content_elem:
-                preview_text = content_elem.get_text(strip=True)[:200]
+                preview_text = content_elem.get_text(strip=True)
            
-            # Проверяем ключевые слова
-            found_words = []
+            # Проверяем наличие ключевых слов (в заголовке ИЛИ в превью)
             full_text = (title + ' ' + preview_text).lower()
             for keyword in keywords:
                 if keyword.lower() in full_text:
-                    found_words.append(keyword)
-           
-            print(f"{idx}. {date_str}")
-            print(f"   Заголовок: {title}")
-            print(f"   Найдены слова: {', '.join(found_words) if found_words else 'НЕТ'}")
-            print(f"   Ссылка: {link}")
-            if preview_text:
-                print(f"   Превью: {preview_text[:150]}...")
-            print("-"*80)
-           
-            if found_words:
-                found_articles.append({
-                    'date': date_str,
-                    'title': title,
-                    'link': link,
-                    'keywords': found_words,
-                    'preview': preview_text
-                })
-       
-        print(f"\n✅ ИТОГО: Найдено {len(found_articles)} статей с ключевыми словами:")
-        for article in found_articles:
-            print(f"   {article['date']} – {article['title']} – {article['link']}")
-            print(f"   Ключевые слова: {', '.join(article['keywords'])}")
-            print()
+                    found_articles.append({
+                        'date': date_str,
+                        'title': title,
+                        'link': link
+                    })
+                    break  # Добавляем статью только один раз
        
         return found_articles
        
+    except requests.RequestException as e:
+        print(f'Ошибка при запросе: {e}')
+        return []
     except Exception as e:
-        print(f'Ошибка: {e}')
+        print(f'Ошибка при парсинге: {e}')
         return []
 
+# Запуск
 if __name__ == '__main__':
-    print("🔍 Отладка парсера Хабра\n")
-    debug_parse_habr(URL, KEYWORDS)
+    print('=' * 80)
+    print(f'Поиск статей с ключевыми словами: {", ".join(KEYWORDS)}')
+    print('=' * 80)
+   
+    articles = parse_habr_articles(URL, KEYWORDS)
+   
+    if articles:
+        print(f'\n✅ Найдено {len(articles)} статей:\n')
+        for article in articles:
+            print(f"{article['date']} – {article['title']} – {article['link']}")
+        print()
+    else:
+        print('\n❌ Статей с указанными ключевыми словами не найдено.\n')
